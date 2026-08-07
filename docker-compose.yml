@@ -1,0 +1,61 @@
+
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: codesense_db
+    environment:
+      POSTGRES_DB:       codesense
+      POSTGRES_USER:     codesense
+      POSTGRES_PASSWORD: codesense_dev
+    volumes:
+      # Persist data between container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-run schema on first startup
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U codesense -d codesense"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+
+  # ── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: codesense_redis
+    # appendonly: persist data to disk so cache survives restarts
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:     ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout:  3s
+      retries:  5
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────
+  backend:
+    build: .
+    container_name: codesense_backend
+    env_file: .env
+    environment:
+      # Override localhost URLs to use Docker service names
+      DATABASE_URL: postgresql://codesense:codesense_dev@postgres:5432/codesense
+      REDIS_URL:    redis://redis:6379
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Hot reload in development — mount code into the container
+    volumes:
+      - .:/app
+    command: uvicorn api.server:app --host 0.0.0.0 --port 8002 --reload
+
+volumes:
+  postgres_data:
+  redis_data:
