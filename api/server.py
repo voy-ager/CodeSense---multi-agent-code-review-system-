@@ -4,25 +4,51 @@ import sys
 import os
 import json
 import logging
+import secrets
 from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from agent.graph import build_graph
 from database.connection import get_pool, close_pool
 from database.crud import save_review, get_recent_reviews, get_stats
-from cache.redis_client import get_cached_review, cache_review
+from cache.redis_client import get_cached_review, cache_review, REDIS_URL
+from tools.github import canonical_pr_url
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Comma-separated list of frontend origins allowed to call the API from a browser.
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+
+# The largest legitimate body is {"pr_url": "..."} — 1MB is a generous ceiling.
+MAX_BODY_BYTES = 1_000_000
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options":    "nosniff",
+    "X-Frame-Options":           "DENY",
+    "Referrer-Policy":           "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Permissions-Policy":        "camera=(), microphone=(), geolocation=()",
+}
+# The API only returns JSON/SSE, so nothing may load — except Swagger UI, which pulls CDN assets.
+API_CSP = "default-src 'none'; frame-ancestors 'none'"
+DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+
+# Rate limits live in Redis so they hold across workers; if Redis is down,
+# each worker falls back to its own in-memory counter rather than failing open.
+limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL, in_memory_fallback_enabled=True)
 
 
 # ── Lifespan: startup + shutdown ──────────────────────────────────────────────
@@ -60,23 +86,46 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def harden(request: Request, call_next):
+    """Reject oversized bodies before they're read, and add security headers."""
+    if request.method in ("POST", "PUT", "PATCH"):
+        length = request.headers.get("content-length")
+        # Chunked bodies have no length to check up front, so they're refused outright.
+        if length is None:
+            return JSONResponse({"detail": "Content-Length header required"}, status_code=411)
+        if not length.isdigit() or int(length) > MAX_BODY_BYTES:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    if not request.url.path.startswith(DOCS_PATHS):
+        response.headers["Content-Security-Policy"] = API_CSP
+    return response
+
+
+# Added after harden so CORS is the outermost layer — 411/413 responses still carry CORS headers.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 
 # ── Request models ────────────────────────────────────────────────────────────
 class ReviewRequest(BaseModel):
-    pr_url: str
+    pr_url: str = Field(max_length=500)
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 def build_initial_state(pr_url: str) -> dict:
     return {
-        "pr_url":            pr_url.strip(),
+        "pr_url":            pr_url,
         "raw_diff":          "",
         "pr_metadata":       {},
         "security_findings": [],
@@ -98,17 +147,23 @@ async def persist(pr_url: str, report: dict) -> str | None:
     return await save_review(report)
 
 
-def validate_pr_url(pr_url: str) -> None:
-    if not pr_url.startswith("https://github.com/"):
+def validate_pr_url(pr_url: str) -> str:
+    """Return the canonical PR URL, or reject anything that isn't a GitHub PR link."""
+    canonical = canonical_pr_url(pr_url)
+    if not canonical:
         raise HTTPException(
             status_code=400,
-            detail="URL must be a valid GitHub PR URL starting with https://github.com/"
+            detail="URL must be a GitHub pull request, e.g. https://github.com/owner/repo/pull/123"
         )
-    if "/pull/" not in pr_url:
-        raise HTTPException(
-            status_code=400,
-            detail="URL must point to a pull request — must contain /pull/"
-        )
+    return canonical
+
+
+def require_api_key(x_api_key: str = Header(default="")) -> None:
+    """Admin endpoints expose every review ever run, so they need ADMIN_API_KEY.
+    If the key isn't configured the endpoints stay locked (fail closed)."""
+    expected = os.getenv("ADMIN_API_KEY", "")
+    if not expected or not secrets.compare_digest(x_api_key.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -135,22 +190,23 @@ async def health():
 
 
 @app.post("/review")
-async def review(request: ReviewRequest):
+@limiter.limit("10/minute")
+async def review(request: Request, body: ReviewRequest):
     """
     Analyze a GitHub PR. Checks Redis cache first — returns in <1s on a hit.
     On a cache miss, runs the full 4-agent pipeline, then saves to both
     PostgreSQL (permanent) and Redis (1-hour TTL).
     """
-    validate_pr_url(request.pr_url)
+    pr_url = validate_pr_url(body.pr_url)
 
     # ── Cache check ───────────────────────────────────────────────────────
-    cached = await get_cached_review(request.pr_url)
+    cached = await get_cached_review(pr_url)
     if cached:
         return {
             "report":   cached,
             "cached":   True,
             "metadata": {
-                "pr_url":            request.pr_url,
+                "pr_url":            pr_url,
                 "total_findings":    cached.get("total_findings", 0),
                 "cache":             "HIT — returned in <1s",
             }
@@ -158,7 +214,7 @@ async def review(request: ReviewRequest):
 
     # ── Cache miss: run the full pipeline ─────────────────────────────────
     try:
-        initial_state = build_initial_state(request.pr_url)
+        initial_state = build_initial_state(pr_url)
         # ainvoke runs the sync nodes in a thread pool, so a 30s review
         # doesn't freeze every other request on the event loop.
         result        = await app.state.graph.ainvoke(initial_state)
@@ -167,13 +223,13 @@ async def review(request: ReviewRequest):
             raise HTTPException(status_code=422, detail=result["error"])
 
         report    = result.get("final_report", {})
-        review_id = await persist(request.pr_url, report)
+        review_id = await persist(pr_url, report)
 
         return {
             "report":   report,
             "cached":   False,
             "metadata": {
-                "pr_url":         request.pr_url,
+                "pr_url":         pr_url,
                 "review_id":      review_id,
                 "total_findings": report.get("total_findings", 0),
                 "agents_ran":     ["security", "performance", "testing", "style"],
@@ -183,8 +239,10 @@ async def review(request: ReviewRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Log the details server-side; don't leak internals to the client.
+        logger.exception("Review failed for %s", pr_url)
+        raise HTTPException(status_code=500, detail="Review failed — please try again")
 
 
 # node name → (SSE status the frontend listens for, display label, findings key)
@@ -197,16 +255,17 @@ AGENT_EVENTS = {
 
 
 @app.post("/review/stream")
-async def review_stream(request: ReviewRequest):
+@limiter.limit("10/minute")
+async def review_stream(request: Request, body: ReviewRequest):
     """
     Streaming version of /review. Returns SSE events as each agent completes.
     On a cache hit, streams the cached result immediately.
     On a cache miss, runs the pipeline and streams progress in real time.
     """
-    validate_pr_url(request.pr_url)
+    pr_url = validate_pr_url(body.pr_url)
 
     # ── Cache hit: stream the cached result immediately ───────────────────
-    cached = await get_cached_review(request.pr_url)
+    cached = await get_cached_review(pr_url)
     if cached:
         async def stream_cache():
             yield f"data: {json.dumps({'status': 'cache_hit', 'message': 'Returning cached review'})}\n\n"
@@ -219,7 +278,7 @@ async def review_stream(request: ReviewRequest):
         try:
             yield f"data: {json.dumps({'status': 'starting', 'message': 'Fetching PR diff from GitHub...'})}\n\n"
 
-            initial_state = build_initial_state(request.pr_url)
+            initial_state = build_initial_state(pr_url)
             final_report  = {}
 
             async for event in app.state.graph.astream(initial_state):
@@ -254,31 +313,29 @@ async def review_stream(request: ReviewRequest):
 
             # Save to cache and DB after streaming completes
             if final_report:
-                await persist(request.pr_url, final_report)
+                await persist(pr_url, final_report)
 
             yield "data: [DONE]\n\n"
 
-        except Exception as e:
-            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        except Exception:
+            logger.exception("Streaming review failed for %s", pr_url)
+            yield f"data: {json.dumps({'status': 'error', 'message': 'Review failed — please try again'})}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.get("/reviews/recent")
-async def recent_reviews(limit: int = 10):
+@app.get("/reviews/recent", dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+async def recent_reviews(request: Request, limit: int = Query(10, ge=1, le=50)):
     """Return the most recent reviews from PostgreSQL for the dashboard."""
-    reviews = await get_recent_reviews(limit=min(limit, 50))
+    reviews = await get_recent_reviews(limit=limit)
     return {"reviews": reviews, "count": len(reviews)}
 
 
-@app.get("/reviews/stats")
-async def review_stats():
+@app.get("/reviews/stats", dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+async def review_stats(request: Request):
     """Aggregate stats across all reviews — for the dashboard summary cards."""
     stats = await get_stats()
     return stats
-
-
-@app.get("/sources")
-def list_sources():
-    return {"message": "Sources endpoint available. Submit a PR URL to /review."}

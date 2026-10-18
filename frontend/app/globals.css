@@ -24,14 +24,3 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-@keyframes diffFloat {
-  0%   { transform: translateY(0px);    opacity: 0; }
-  6%   { opacity: 1; }
-  88%  { opacity: 1; }
-  100% { transform: translateY(-680px); opacity: 0; }
-}
-@keyframes heroFloat {
-  0%   { transform: translateY(0px);  }
-  50%  { transform: translateY(-10px); }
-  100% { transform: translateY(0px);  }
-}

@@ -1,5 +1,5 @@
 # Build stage — install dependencies in a clean layer
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -11,20 +11,28 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 
 # Runtime stage — copy installed packages and app code
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
 # Copy installed Python packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
+# Run as an unprivileged user — a compromised process can't modify the image or install anything
+RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin app
+
+# Copy application code (owned by root, so the app user can read but not modify it)
 COPY . .
+
+USER 1000
 
 # Expose the API port
 EXPOSE 8002
 
 # Use uvicorn with multiple workers in production
 # --workers 2: handle concurrent requests without blocking
-CMD ["uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "2"]
+# --proxy-headers: take the client IP from X-Forwarded-For, otherwise every user behind
+#   Render's proxy shares one rate-limit bucket. Only safe because the container is
+#   reachable solely through the platform proxy (docker-compose dev doesn't use this CMD).
+CMD ["uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]

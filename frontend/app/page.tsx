@@ -1,5 +1,4 @@
 "use client";
-import dynamic from "next/dynamic";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navigation     from "@/components/Navigation";
@@ -8,11 +7,7 @@ import FindingCard    from "@/components/FindingCard";
 import AgentPanel     from "@/components/AgentPanel";
 import HowItWorks     from "@/components/HowItWorks";
 import AboutSection   from "@/components/AboutSection";
-import HeroBackground from "@/components/HeroBackground";
-
-const HeroPreview = dynamic(() => import("@/components/HeroPreview"), {
-  ssr: false,
-});
+import CodeReviewHero from "@/components/CodeReviewHero";
 
 const API = "http://localhost:8002";
 
@@ -111,93 +106,7 @@ export default function Home() {
     <div className="min-h-screen bg-slate-950">
       <Navigation />
 
-      {/* Hero */}
-      <section className="relative pt-24 pb-4 px-6 overflow-hidden">
-        <HeroBackground />
-        <div className="relative z-10 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2
-                        gap-12 items-center min-h-[520px]">
-
-          {/* Left: text */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="text-center lg:text-left"
-          >
-            <motion.span
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
-              className="inline-block text-xs font-medium text-blue-400 bg-blue-500/10
-                         border border-blue-500/20 rounded-full px-4 py-1.5 mb-6"
-            >
-              Multi-agent AI code review
-            </motion.span>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.5 }}
-              className="text-4xl lg:text-5xl font-semibold text-white mb-5
-                         tracking-tight leading-tight"
-            >
-              Code review that{" "}
-              <span className="text-transparent bg-clip-text
-                               bg-gradient-to-r from-blue-400 to-cyan-400">
-                thinks in parallel
-              </span>
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.5 }}
-              className="text-base text-slate-400 mb-8 leading-relaxed
-                         max-w-lg mx-auto lg:mx-0"
-            >
-              Four specialized agents analyze your GitHub PR simultaneously.
-              Security, performance, test coverage, and style - in under 30 seconds.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5, duration: 0.5 }}
-              className="flex items-center gap-4 flex-wrap mb-10
-                         justify-center lg:justify-start"
-            >
-              {["🔒 Security", "⚡ Performance", "🧪 Testing", "✏️ Style"].map(label => (
-                <span key={label} className="text-sm text-slate-500">{label}</span>
-              ))}
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6, duration: 0.4 }}
-              className="flex gap-3 justify-center lg:justify-start"
-            >
-              <a href="#review"
-                 className="bg-blue-600 hover:bg-blue-500 text-white text-sm
-                            font-medium px-6 py-3 rounded-xl transition-colors duration-200">
-                Analyze a PR
-              </a>
-              <a href="#how-it-works"
-                 className="text-slate-400 hover:text-white text-sm font-medium
-                            px-6 py-3 rounded-xl border border-slate-800
-                            hover:border-slate-600 transition-all duration-200">
-                How it works
-              </a>
-            </motion.div>
-          </motion.div>
-
-          {/* Right: product preview — desktop only */}
-          <div className="hidden lg:block">
-            <HeroPreview />
-          </div>
-
-        </div>
-      </section>
+      <CodeReviewHero />
 
       <HowItWorks />
       <AboutSection />

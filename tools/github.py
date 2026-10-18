@@ -1,5 +1,6 @@
 # tools/github.py
 
+import re
 import requests
 import os
 from dotenv import load_dotenv
@@ -7,6 +8,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GITHUB_TIMEOUT = 15  # seconds
+
+# Owner: GitHub username rules. Repo: GitHub repo-name charset, but never "." or "..",
+# since both are interpolated into the api.github.com path along with our token.
+# Accepts the /files, /commits, /checks tabs and a trailing ?query or #fragment.
+PR_URL_RE = re.compile(
+    r"^https://github\.com/"
+    r"([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/"
+    r"((?!\.\.?/)[A-Za-z0-9._-]{1,100})/"
+    r"pull/(\d{1,10})"
+    r"(?:/(?:files|commits|checks))?/?(?:[?#].*)?$"
+)
+
+
+def parse_pr_url(pr_url: str) -> tuple[str, str, str] | None:
+    """Return (owner, repo, pr_number) for a valid PR URL, else None."""
+    match = PR_URL_RE.match(pr_url.strip())
+    return match.groups() if match else None
+
+
+def canonical_pr_url(pr_url: str) -> str | None:
+    """https://github.com/o/r/pull/1/files?x → https://github.com/o/r/pull/1 (one cache key per PR)."""
+    parsed = parse_pr_url(pr_url)
+    return "https://github.com/{}/{}/pull/{}".format(*parsed) if parsed else None
+
 
 def fetch_pr_diff(pr_url: str) -> tuple[str, dict]:
     """
@@ -21,13 +46,10 @@ def fetch_pr_diff(pr_url: str) -> tuple[str, dict]:
     # ── Parse the URL ─────────────────────────────────────────────
     # Input:  "https://github.com/facebook/react/pull/12345"
     # We need: owner="facebook", repo="react", number="12345"
-    try:
-        parts  = pr_url.rstrip("/").split("/")
-        owner  = parts[-4]
-        repo   = parts[-3]
-        pr_num = parts[-1]
-    except IndexError:
+    parsed = parse_pr_url(pr_url)
+    if not parsed:
         raise ValueError(f"Invalid GitHub PR URL: {pr_url}")
+    owner, repo, pr_num = parsed
 
     token = os.getenv("GITHUB_TOKEN", "")
     headers_json = {

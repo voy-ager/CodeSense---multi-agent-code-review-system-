@@ -1,7 +1,7 @@
 "use client";
 import { motion } from "framer-motion";
 
-type Severity = "critical" | "high" | "medium" | "low";
+export type Severity = "critical" | "high" | "medium" | "low";
 
 type Finding = {
   severity: Severity;
@@ -13,7 +13,7 @@ type Finding = {
   agent: string;
 };
 
-const SEVERITY_STYLES: Record<Severity, string> = {
+export const SEVERITY_STYLES: Record<Severity, string> = {
   critical: "bg-red-500/20 text-red-300 border-red-500/30",
   high:     "bg-orange-500/20 text-orange-300 border-orange-500/30",
   medium:   "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
