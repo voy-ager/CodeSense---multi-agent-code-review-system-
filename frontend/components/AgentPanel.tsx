@@ -1,4 +1,5 @@
 "use client";
+import AgentIcon from "@/components/AgentIcon";
 import { motion } from "framer-motion";
 
 type Severity = "critical" | "high" | "medium" | "low";
@@ -17,13 +18,6 @@ const SEVERITY_STYLES: Record<Severity, string> = {
   high:     "bg-orange-500/20 text-orange-300 border-orange-500/30 hover:bg-orange-500/30",
   medium:   "bg-yellow-500/20 text-yellow-300 border-yellow-500/30 hover:bg-yellow-500/30",
   low:      "bg-blue-500/20 text-blue-300 border-blue-500/30 hover:bg-blue-500/30",
-};
-
-const AGENT_ICONS: Record<string, string> = {
-  security:    "🔒",
-  performance: "⚡",
-  testing:     "🧪",
-  style:       "✏️",
 };
 
 export default function AgentPanel({
@@ -84,7 +78,7 @@ export default function AgentPanel({
                         transition-all duration-200
                         ${filter === agent ? "ring-2 ring-white/20 ring-offset-1 ring-offset-slate-900" : ""}`}
           >
-            <span>{AGENT_ICONS[agent]}</span>
+            <AgentIcon name={agent} className="w-3.5 h-3.5" />
             {agent}: {count}
           </motion.button>
         ))}

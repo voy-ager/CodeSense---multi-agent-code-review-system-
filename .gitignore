@@ -1,4 +1,3 @@
-@"
 # ── Secrets — NEVER commit these ──────────────────────────────
 .env
 .env.local
@@ -43,4 +42,3 @@ desktop.ini
 chroma_db/
 *.cache
 *.pkl
-"@ | Out-File -FilePath .gitignore -Encoding utf8

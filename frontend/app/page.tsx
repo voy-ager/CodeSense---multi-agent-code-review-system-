@@ -8,8 +8,14 @@ import AgentPanel     from "@/components/AgentPanel";
 import HowItWorks     from "@/components/HowItWorks";
 import AboutSection   from "@/components/AboutSection";
 import CodeReviewHero from "@/components/CodeReviewHero";
+import AgentIcon      from "@/components/AgentIcon";
+import FaqSection     from "@/components/FaqSection";
+import { FinalCta, Footer } from "@/components/SiteFooter";
 
-const API = "http://localhost:8002";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+
+const EXAMPLE_PR = "https://github.com/psf/requests/pull/6746";
+const DONE_STATUSES = ["diff_fetched", "security_done", "perf_done", "test_done", "style_done"];
 
 type Severity = "critical" | "high" | "medium" | "low";
 type Finding = {
@@ -47,8 +53,8 @@ export default function Home() {
     setStatuses(prev => [...prev, { message, type }]);
   }
 
-  async function analyze() {
-    if (!prUrl.trim() || loading) return;
+  async function analyze(url = prUrl) {
+    if (!url.trim() || loading) return;
     setLoading(true);
     setReport(null);
     setStatuses([]);
@@ -58,9 +64,14 @@ export default function Home() {
       const res = await fetch(`${API}/review/stream`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ pr_url: prUrl.trim() }),
+        body:    JSON.stringify({ pr_url: url.trim() }),
       });
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      if (!res.ok) {
+        // FastAPI/SlowAPI errors carry a human-readable reason in "detail" or "error".
+        const body = await res.json().catch(() => ({}));
+        const detail = typeof body.detail === "string" ? body.detail : body.error;
+        throw new Error(detail || `Server error: ${res.status}`);
+      }
       const reader  = res.body!.getReader();
       const decoder = new TextDecoder();
       let   buffer  = "";
@@ -77,13 +88,9 @@ export default function Home() {
           try {
             const data = JSON.parse(payload);
             if (data.status === "starting")      addStatus("Fetching PR from GitHub...");
-            if (data.status === "diff_fetched")  addStatus(`✓ ${data.message}`, "done");
-            if (data.status === "security_done") addStatus(`✓ ${data.message}`, "done");
-            if (data.status === "perf_done")     addStatus(`✓ ${data.message}`, "done");
-            if (data.status === "test_done")     addStatus(`✓ ${data.message}`, "done");
-            if (data.status === "style_done")    addStatus(`✓ ${data.message}`, "done");
-            if (data.status === "error")         addStatus(`✗ ${data.message}`, "error");
-            if (data.status === "agent_failed")  addStatus(`✗ ${data.message}`, "error");
+            // PipelineStatus draws the ✓/✗ icon, so messages go in unprefixed.
+            if (DONE_STATUSES.includes(data.status)) addStatus(data.message, "done");
+            if (data.status === "error" || data.status === "agent_failed") addStatus(data.message, "error");
             if (data.status === "complete" && data.report) {
               setReport(data.report);
               addStatus("Analysis complete", "done");
@@ -108,11 +115,8 @@ export default function Home() {
 
       <CodeReviewHero />
 
-      <HowItWorks />
-      <AboutSection />
-
-      {/* Review tool */}
-      <section id="review" className="max-w-5xl mx-auto px-6 pb-24 pt-8">
+      {/* Review tool — right after the hero: trying it is the main conversion */}
+      <section id="review" className="max-w-5xl mx-auto px-4 sm:px-6 py-24 scroll-mt-14">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -139,25 +143,29 @@ export default function Home() {
           transition={{ duration: 0.5 }}
           className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6"
         >
-          <label className="block text-sm font-medium text-slate-300 mb-3">
+          <label htmlFor="pr-url" className="block text-sm font-medium text-slate-300 mb-3">
             GitHub Pull Request URL
           </label>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <input
+              id="pr-url"
+              type="url"
+              inputMode="url"
+              autoComplete="off"
               value={prUrl}
               onChange={e => setPrUrl(e.target.value)}
               onKeyDown={e => e.key === "Enter" && analyze()}
               placeholder="https://github.com/owner/repo/pull/123"
               disabled={loading}
-              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl
-                         px-4 py-3 text-sm text-white placeholder-slate-500
+              className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-xl
+                         px-4 py-3 text-base sm:text-sm text-white placeholder-slate-500
                          focus:outline-none focus:ring-2 focus:ring-blue-500
                          focus:border-transparent disabled:opacity-50
                          transition-all duration-200"
             />
             <motion.button
               whileTap={{ scale: 0.97 }}
-              onClick={analyze}
+              onClick={() => analyze()}
               disabled={loading || !prUrl.trim()}
               className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3
                          rounded-xl text-sm font-medium disabled:opacity-40
@@ -167,6 +175,18 @@ export default function Home() {
               {loading ? "Analyzing..." : "Analyze PR"}
             </motion.button>
           </div>
+          <p className="mt-3 text-sm text-slate-500">
+            No PR handy?{" "}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => { setPrUrl(EXAMPLE_PR); analyze(EXAMPLE_PR); }}
+              className="text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer
+                         disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Try an example from psf/requests
+            </button>
+          </p>
         </motion.div>
 
         <PipelineStatus statuses={statuses} loading={loading} />
@@ -205,9 +225,9 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-center py-24"
+            className="text-center py-16"
           >
-            <p className="text-5xl mb-5">🔍</p>
+            <AgentIcon name="search" className="w-12 h-12 mx-auto mb-5 text-slate-600" />
             <h2 className="text-lg font-medium text-slate-300 mb-2">
               Paste a GitHub PR URL to get started
             </h2>
@@ -219,11 +239,11 @@ export default function Home() {
         )}
       </section>
 
-      <footer className="border-t border-slate-800 py-8 px-6 text-center">
-        <p className="text-sm text-slate-500">
-          CodeSense - Multi-agent AI code review - Built with LangGraph, Groq, FastAPI, and Next.js
-        </p>
-      </footer>
+      <HowItWorks />
+      <AboutSection />
+      <FaqSection />
+      <FinalCta />
+      <Footer />
     </div>
   );
 }

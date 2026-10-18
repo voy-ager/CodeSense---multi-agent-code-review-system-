@@ -1,298 +1,113 @@
 "use client";
-import { motion, useInView } from "framer-motion";
-import { useRef } from "react";
+import { motion, MotionConfig } from "framer-motion";
+import { REPO_URL } from "@/lib/site";
 
-const STACK = [
-  { label: "LangGraph",     desc: "Parallel fan-out agent orchestration" },
-  { label: "Llama 3.3 70B", desc: "Free, fast inference via Groq" },
-  { label: "FastAPI",       desc: "Streaming SSE backend" },
-  { label: "Next.js 14",    desc: "TypeScript frontend with Framer Motion" },
-  { label: "GitHub API",    desc: "PR diff and metadata fetching" },
-  { label: "Framer Motion", desc: "Smooth animations and transitions" },
-];
-
-const PROBLEMS = [
-  {
-    stat: "20-30%",
-    label: "of senior engineer time",
-    desc: "spent on first-pass code review - the most repetitive part of the job.",
-  },
-  {
-    stat: "48 min",
-    label: "average review wait time",
-    desc: "developers sit idle waiting for feedback before they can move forward.",
-  },
-  {
-    stat: "1 in 3",
-    label: "security issues missed",
-    desc: "human reviewers under time pressure consistently overlook vulnerability patterns.",
-  },
-];
-
-const VALUES = [
-  {
-    icon: "🔒",
-    title: "Security analysis on every PR",
-    desc: "Dedicated security analysis on every PR. SQL injection, XSS, hardcoded secrets, and missing auth checks flagged before code ever reaches production.",
-  },
-  {
-    icon: "⚡",
-    title: "Instant, parallel feedback",
-    desc: "Four agents run simultaneously. No waiting for a senior engineer to be available. Developers get actionable feedback in under 30 seconds.",
-  },
-  {
-    icon: "📋",
-    title: "Consistent quality bar",
-    desc: "Every PR gets reviewed against the same standards. No more inconsistency based on who reviewed it or how much time they had.",
-  },
-  {
-    icon: "🎯",
-    title: "Actionable, not just critical",
-    desc: "Every finding includes a concrete fix suggestion. Not just what is wrong, but exactly what to do about it.",
-  },
-];
-
+// Every claim here maps to something in the codebase — no marketing numbers.
 const DECISIONS = [
   {
-    title: "Why parallel agents",
-    body: "Running security, performance, testing, and style agents sequentially would take 4x longer. LangGraph's fan-out pattern runs all four simultaneously so total time equals the slowest single agent.",
+    title: "Parallel by design",
+    body: "LangGraph fans the diff out to four independent agents, so a review takes as long as the slowest agent, not the sum of all four.",
   },
   {
-    title: "Why structured JSON output",
-    body: "Every agent returns the same schema: severity, file, line, issue, fix, category. This lets the synthesizer merge and sort findings from all four agents without any post-processing logic.",
+    title: "Failures are never silent",
+    body: "If an agent errors, the report is marked incomplete and names it. A broken review is never shown as a clean PR, and incomplete reports aren't cached.",
   },
   {
-    title: "Why Groq over OpenAI",
-    body: "Groq's free tier provides 14,400 requests per minute with sub-second response times. Four agents running in parallel would hit OpenAI rate limits quickly. Groq handles concurrent requests cleanly.",
+    title: "One schema, ranked output",
+    body: "Every agent returns the same JSON shape — severity, file, line, issue, fix — so findings from all four merge into one list sorted by severity.",
   },
   {
-    title: "Why severity-first sorting",
-    body: "A critical SQL injection buried after 10 style warnings is a bad user experience. The synthesizer always surfaces the highest severity findings first regardless of which agent returned them.",
+    title: "Cached and persisted",
+    body: "Redis caches each report for an hour, so repeat reviews return instantly. PostgreSQL keeps the review history behind an API key.",
   },
+  {
+    title: "Hardened API",
+    body: "Per-client rate limits, strict GitHub URL validation, request size caps, security headers, a CORS allowlist, and a non-root container.",
+  },
+  {
+    title: "Open source",
+    body: "Every agent prompt, the pipeline, and the infrastructure are on GitHub. Read exactly what each agent is told to look for.",
+  },
+];
+
+const STACK = [
+  "LangGraph", "Groq · gpt-oss-120b", "FastAPI + SSE", "PostgreSQL",
+  "Redis", "Docker", "Next.js 16", "Framer Motion",
+];
+
+const LIMITS = [
+  "Public GitHub pull requests only",
+  "Diffs beyond 8,000 characters are truncated",
+  "Findings are AI-generated — treat them as a first pass, not a verdict",
 ];
 
 export default function AboutSection() {
-  const problemsRef  = useRef(null);
-  const valuesRef    = useRef(null);
-  const decisionsRef = useRef(null);
-  const stackRef     = useRef(null);
-
-  const problemsInView  = useInView(problemsRef,  { once: true, margin: "-60px" });
-  const valuesInView    = useInView(valuesRef,    { once: true, margin: "-60px" });
-  const decisionsInView = useInView(decisionsRef, { once: true, margin: "-60px" });
-  const stackInView     = useInView(stackRef,     { once: true, margin: "-60px" });
-
   return (
-    <section id="about" className="py-24 px-6 bg-white">
-      <div className="max-w-5xl mx-auto">
-
-        {/* What is CodeSense */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mb-20"
-        >
-          <span className="text-xs font-medium text-blue-600 bg-blue-50
-                           border border-blue-200 rounded-full px-4 py-1.5">
-            About CodeSense
-          </span>
-          <h2 className="text-3xl font-semibold text-slate-900 mt-6 mb-5 tracking-tight">
-            Code review should not be a bottleneck
-          </h2>
-          <div className="max-w-2xl space-y-4">
-            <p className="text-slate-600 text-base leading-relaxed">
-              CodeSense is an AI-powered code review system that analyzes
-              GitHub pull requests the moment they are opened. Four specialized
-              agents inspect the diff in parallel and return a ranked, structured
-              report covering security vulnerabilities, performance problems,
-              missing test coverage, and style issues.
-            </p>
-            <p className="text-slate-500 text-base leading-relaxed">
-              It works on any public pull request with no setup, no
-              configuration, and no login required. Paste a URL, get a review.
-            </p>
-          </div>
-        </motion.div>
-
-        {/* The problem */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.4 }}
-          className="mb-8"
-        >
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
-            The problem with code review today
-          </h2>
-          <p className="text-slate-500 text-sm max-w-xl">
-            Code review is one of the most valuable and most broken parts
-            of the software development process.
-          </p>
-        </motion.div>
-
-        <div ref={problemsRef} className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-20">
-          {PROBLEMS.map((p, i) => (
-            <motion.div
-              key={p.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={problemsInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-              className="bg-slate-50 border border-slate-200 rounded-2xl p-6"
-            >
-              <p className="text-3xl font-bold text-slate-900 mb-1">
-                {p.stat}
-              </p>
-              <p className="text-xs font-semibold text-blue-600 uppercase
-                            tracking-wider mb-3">
-                {p.label}
-              </p>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                {p.desc}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* What CodeSense does about it */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.4 }}
-          className="mb-8"
-        >
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
-            How CodeSense helps
-          </h2>
-          <p className="text-slate-500 text-sm max-w-xl">
-            Automated first-pass review means your engineers spend their
-            time on decisions, not repetitive pattern-matching.
-          </p>
-        </motion.div>
-
-        <div ref={valuesRef} className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-20">
-          {VALUES.map((v, i) => (
-            <motion.div
-              key={v.title}
-              initial={{ opacity: 0, x: i % 2 === 0 ? -16 : 16 }}
-              animate={valuesInView ? { opacity: 1, x: 0 } : {}}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-              whileHover={{ y: -2, transition: { duration: 0.15 } }}
-              className="bg-white border border-slate-200 rounded-2xl p-6"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-xl">{v.icon}</span>
-                <h3 className="text-sm font-semibold text-slate-900">
-                  {v.title}
-                </h3>
-              </div>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                {v.desc}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Engineering decisions */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.4 }}
-          className="mb-8"
-        >
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
-            How it is built
-          </h2>
-          <p className="text-slate-500 text-sm">
-            Every architectural decision was made to maximize review
-            quality and minimize latency.
-          </p>
-        </motion.div>
-
-        <div ref={decisionsRef} className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-20">
-          {DECISIONS.map((d, i) => (
-            <motion.div
-              key={d.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={decisionsInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-              className="bg-slate-50 border border-slate-200 rounded-2xl p-6"
-            >
-              <h3 className="text-sm font-semibold text-slate-900 mb-2">
-                {d.title}
-              </h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                {d.body}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Tech stack */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.4 }}
-          className="mb-8"
-        >
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
-            Tech stack
-          </h2>
-          <p className="text-slate-500 text-sm">
-            Every component was chosen for a specific reason.
-          </p>
-        </motion.div>
-
-        <div ref={stackRef} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-20">
-          {STACK.map((item, i) => (
-            <motion.div
-              key={item.label}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={stackInView ? { opacity: 1, scale: 1 } : {}}
-              transition={{ duration: 0.35, delay: i * 0.07 }}
-              className="bg-white border border-slate-200 rounded-xl px-4 py-3"
-            >
-              <p className="text-sm font-semibold text-slate-900 mb-0.5">
-                {item.label}
-              </p>
-              <p className="text-xs text-slate-500">
-                {item.desc}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="bg-slate-900 rounded-2xl p-8 text-center"
-        >
-          <h3 className="text-xl font-semibold text-white mb-3">
-            Try it on any public PR
-          </h3>
-          <p className="text-slate-400 text-sm mb-6 max-w-sm mx-auto">
-            No login required. Paste any public GitHub pull request URL
-            and get a full AI review in seconds.
-          </p>
-          <a
-            href="#review"
-            className="inline-block bg-blue-600 hover:bg-blue-500 text-white
-                       text-sm font-medium px-6 py-3 rounded-xl
-                       transition-colors duration-200"
+    <MotionConfig reducedMotion="user">
+      <section id="about" className="py-24 px-4 sm:px-6 border-t border-slate-800/60 scroll-mt-14">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="max-w-2xl mb-12"
           >
-            Analyze a PR
-          </a>
-        </motion.div>
+            <span className="text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5">
+              Under the hood
+            </span>
+            <h2 className="text-3xl font-semibold text-white tracking-tight mt-6 mb-3 text-balance">
+              Built like a production service, not a demo
+            </h2>
+            <p className="text-slate-400 leading-relaxed">
+              The decisions that keep reviews fast, honest about failure, and safe to expose publicly.
+            </p>
+          </motion.div>
 
-      </div>
-    </section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {DECISIONS.map((d, i) => (
+              <motion.div
+                key={d.title}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: (i % 3) * 0.06 }}
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-6 hover:border-slate-700 transition-colors"
+              >
+                <h3 className="text-base font-semibold text-white mb-2">{d.title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{d.body}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">Stack</h3>
+              <ul className="flex flex-wrap gap-2">
+                {STACK.map(s => (
+                  <li key={s} className="text-sm text-slate-300 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 font-mono">
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">Known limits</h3>
+              <ul className="space-y-2">
+                {LIMITS.map(l => (
+                  <li key={l} className="flex gap-2 text-sm text-slate-400">
+                    <span className="text-slate-600" aria-hidden="true">—</span>{l}
+                  </li>
+                ))}
+              </ul>
+              <a href={REPO_URL} target="_blank" rel="noopener noreferrer"
+                 className="inline-block mt-5 text-sm text-blue-400 hover:text-blue-300 underline underline-offset-4">
+                Read the source on GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </MotionConfig>
   );
 }

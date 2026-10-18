@@ -2,6 +2,8 @@
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useState } from "react";
 import Link from "next/link";
+import AgentIcon from "@/components/AgentIcon";
+import { REPO_URL } from "@/lib/site";
 
 export default function Navigation() {
   const [scrolled, setScrolled] = useState(false);
@@ -22,11 +24,11 @@ export default function Navigation() {
           : "bg-slate-950"
       }`}
     >
-      <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl">🔍</span>
+          <AgentIcon name="search" className="w-5 h-5 text-blue-400" />
           <span className="text-white font-semibold text-base tracking-tight">
             Code<span className="text-blue-400">Sense</span>
           </span>
@@ -38,13 +40,14 @@ export default function Navigation() {
             [
               { label: "Review",       href: "#review"       },
               { label: "How it works", href: "#how-it-works" },
-              { label: "About",        href: "#about"        },
+              { label: "Under the hood", href: "#about"     },
+              { label: "FAQ",          href: "#faq"          },
             ] as { label: string; href: string }[]
           ).map((link) => (
             <a
               key={link.label}
               href={link.href}
-              className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
+              className="hidden md:inline text-slate-400 hover:text-white text-sm transition-colors duration-200"
             >
               {link.label}
             </a>
@@ -52,7 +55,7 @@ export default function Navigation() {
 
           {/* GitHub link */}
           <a
-            href="https://github.com/YOUR_USERNAME/codesense"
+            href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white

@@ -1,4 +1,5 @@
 "use client";
+import AgentIcon from "@/components/AgentIcon";
 import { motion } from "framer-motion";
 
 export type Severity = "critical" | "high" | "medium" | "low";
@@ -18,13 +19,6 @@ export const SEVERITY_STYLES: Record<Severity, string> = {
   high:     "bg-orange-500/20 text-orange-300 border-orange-500/30",
   medium:   "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   low:      "bg-blue-500/20 text-blue-300 border-blue-500/30",
-};
-
-const AGENT_ICONS: Record<string, string> = {
-  security:    "🔒",
-  performance: "⚡",
-  testing:     "🧪",
-  style:       "✏️",
 };
 
 export default function FindingCard({
@@ -59,7 +53,7 @@ export default function FindingCard({
           {/* Agent badge */}
           <span className="text-xs text-slate-400 bg-slate-800 border border-slate-700
                            px-2.5 py-1 rounded-full">
-            {AGENT_ICONS[finding.agent]} {finding.agent}
+            <AgentIcon name={finding.agent} className="w-3 h-3 inline -mt-0.5 mr-1" />{finding.agent}
           </span>
 
           {/* Category label */}

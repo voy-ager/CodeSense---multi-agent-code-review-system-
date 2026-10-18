@@ -1,10 +1,11 @@
 "use client";
+import AgentIcon from "@/components/AgentIcon";
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 
 const AGENTS = [
   {
-    icon: "🔒",
+    icon: "security",
     name: "Security agent",
     color: "from-red-500/20 to-red-500/5 border-red-500/20",
     iconBg: "bg-red-500/20",
@@ -16,7 +17,7 @@ const AGENTS = [
     ],
   },
   {
-    icon: "⚡",
+    icon: "performance",
     name: "Performance agent",
     color: "from-yellow-500/20 to-yellow-500/5 border-yellow-500/20",
     iconBg: "bg-yellow-500/20",
@@ -28,7 +29,7 @@ const AGENTS = [
     ],
   },
   {
-    icon: "🧪",
+    icon: "testing",
     name: "Testing agent",
     color: "from-green-500/20 to-green-500/5 border-green-500/20",
     iconBg: "bg-green-500/20",
@@ -40,7 +41,7 @@ const AGENTS = [
     ],
   },
   {
-    icon: "✏️",
+    icon: "style",
     name: "Style agent",
     color: "from-blue-500/20 to-blue-500/5 border-blue-500/20",
     iconBg: "bg-blue-500/20",
@@ -64,13 +65,13 @@ const STEPS = [
     number: "02",
     title: "Four agents run in parallel",
     description:
-      "Security, performance, testing, and style agents analyze the diff simultaneously using Llama 3.3 70B. Total time is determined by the slowest single agent, not the sum.",
+      "Security, performance, testing, and style agents analyze the diff simultaneously. Total time is determined by the slowest single agent, not the sum.",
   },
   {
     number: "03",
     title: "Findings ranked by severity",
     description:
-      "Results are merged, deduplicated, and sorted by severity. Critical issues always appear first regardless of which agent found them.",
+      "Results from all four agents are merged and sorted by severity. Critical issues always appear first regardless of which agent found them.",
   },
 ];
 
@@ -157,7 +158,7 @@ export default function HowItWorks() {
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-10 h-10 ${agent.iconBg} rounded-xl
                                  flex items-center justify-center text-xl`}>
-                  {agent.icon}
+                  <AgentIcon name={agent.icon} className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="text-base font-semibold text-white">
                   {agent.name}
