@@ -1,6 +1,7 @@
 # agent/state.py
 
-from typing import TypedDict
+import operator
+from typing import Annotated, TypedDict
 
 class GraphState(TypedDict):
     """
@@ -55,9 +56,9 @@ class GraphState(TypedDict):
     # report that gets sent back to the user.
 
     # ── Housekeeping ──────────────────────────────────
-    retry_count: int
-    # Tracks how many times the graph has retried after
-    # getting zero findings. Max 1 retry before giving up.
+    failed_agents: Annotated[list, operator.add]
+    # Names of agents whose LLM call or JSON parse failed.
+    # operator.add lets the 4 parallel agents append without conflicting.
 
     error: str
     # Set by any node that encounters an unrecoverable error.

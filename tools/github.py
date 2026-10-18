@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+GITHUB_TIMEOUT = 15  # seconds
+
 def fetch_pr_diff(pr_url: str) -> tuple[str, dict]:
     """
     Given a GitHub PR URL, fetch:
@@ -42,7 +44,11 @@ def fetch_pr_diff(pr_url: str) -> tuple[str, dict]:
     base_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_num}"
 
     # ── Fetch metadata (JSON) ─────────────────────────────────────
-    meta_response = requests.get(base_url, headers=headers_json)
+    # Timeouts stop a slow GitHub response from hanging the request forever.
+    try:
+        meta_response = requests.get(base_url, headers=headers_json, timeout=GITHUB_TIMEOUT)
+    except requests.RequestException as e:
+        raise ValueError(f"GitHub request failed: {e}")
     if meta_response.status_code == 404:
         raise ValueError(f"PR not found: {pr_url}")
     if meta_response.status_code == 401:
@@ -62,7 +68,10 @@ def fetch_pr_diff(pr_url: str) -> tuple[str, dict]:
     }
 
     # ── Fetch raw diff ────────────────────────────────────────────
-    diff_response = requests.get(base_url, headers=headers_diff)
+    try:
+        diff_response = requests.get(base_url, headers=headers_diff, timeout=GITHUB_TIMEOUT)
+    except requests.RequestException as e:
+        raise ValueError(f"GitHub request failed: {e}")
     if not diff_response.ok:
         raise ValueError(f"Failed to fetch diff: {diff_response.status_code}")
 

@@ -84,9 +84,18 @@ def build_initial_state(pr_url: str) -> dict:
         "test_findings":     [],
         "style_findings":    [],
         "final_report":      {},
-        "retry_count":       0,
+        "failed_agents":     [],
         "error":             "",
     }
+
+
+async def persist(pr_url: str, report: dict) -> str | None:
+    """Cache + save a report. Incomplete reports are skipped so a transient
+    LLM failure isn't served from cache for the next hour."""
+    if report.get("failed_agents"):
+        return None
+    await cache_review(pr_url, report)
+    return await save_review(report)
 
 
 def validate_pr_url(pr_url: str) -> None:
@@ -150,18 +159,15 @@ async def review(request: ReviewRequest):
     # ── Cache miss: run the full pipeline ─────────────────────────────────
     try:
         initial_state = build_initial_state(request.pr_url)
-        result        = app.state.graph.invoke(initial_state)
+        # ainvoke runs the sync nodes in a thread pool, so a 30s review
+        # doesn't freeze every other request on the event loop.
+        result        = await app.state.graph.ainvoke(initial_state)
 
         if result.get("error"):
             raise HTTPException(status_code=422, detail=result["error"])
 
-        report = result.get("final_report", {})
-
-        # Save to Redis (fast, 1-hour cache)
-        await cache_review(request.pr_url, report)
-
-        # Save to PostgreSQL (permanent, async — doesn't block the response)
-        review_id = await save_review(report)
+        report    = result.get("final_report", {})
+        review_id = await persist(request.pr_url, report)
 
         return {
             "report":   report,
@@ -179,6 +185,15 @@ async def review(request: ReviewRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# node name → (SSE status the frontend listens for, display label, findings key)
+AGENT_EVENTS = {
+    "security_agent": ("security_done", "Security",    "security_findings"),
+    "perf_agent":     ("perf_done",     "Performance", "perf_findings"),
+    "test_agent":     ("test_done",     "Testing",     "test_findings"),
+    "style_agent":    ("style_done",    "Style",       "style_findings"),
+}
 
 
 @app.post("/review/stream")
@@ -207,7 +222,7 @@ async def review_stream(request: ReviewRequest):
             initial_state = build_initial_state(request.pr_url)
             final_report  = {}
 
-            for event in app.state.graph.stream(initial_state):
+            async for event in app.state.graph.astream(initial_state):
                 node_name = list(event.keys())[0]
                 node_data = event[node_name]
 
@@ -222,30 +237,24 @@ async def review_stream(request: ReviewRequest):
                     msg   = f"PR: '{title}' — {files} files changed"
                     yield f"data: {json.dumps({'status': 'diff_fetched', 'message': msg})}\n\n"
 
-                elif node_name == "security_agent":
-                    count = len(node_data.get("security_findings", []))
-                    yield f"data: {json.dumps({'status': 'security_done', 'message': f'Security: {count} issue(s) found'})}\n\n"
-
-                elif node_name == "perf_agent":
-                    count = len(node_data.get("perf_findings", []))
-                    yield f"data: {json.dumps({'status': 'perf_done', 'message': f'Performance: {count} issue(s) found'})}\n\n"
-
-                elif node_name == "test_agent":
-                    count = len(node_data.get("test_findings", []))
-                    yield f"data: {json.dumps({'status': 'test_done', 'message': f'Testing: {count} issue(s) found'})}\n\n"
-
-                elif node_name == "style_agent":
-                    count = len(node_data.get("style_findings", []))
-                    yield f"data: {json.dumps({'status': 'style_done', 'message': f'Style: {count} issue(s) found'})}\n\n"
+                elif node_name in AGENT_EVENTS:
+                    status, label, key = AGENT_EVENTS[node_name]
+                    if node_data.get("failed_agents"):
+                        status, msg = "agent_failed", f"{label}: agent failed — results incomplete"
+                    else:
+                        msg = f"{label}: {len(node_data.get(key, []))} issue(s) found"
+                    yield f"data: {json.dumps({'status': status, 'message': msg})}\n\n"
 
                 elif node_name == "synthesize":
+                    if node_data.get("error"):
+                        yield f"data: {json.dumps({'status': 'error', 'message': node_data['error']})}\n\n"
+                        break
                     final_report = node_data.get("final_report", {})
                     yield f"data: {json.dumps({'status': 'complete', 'report': final_report, 'cached': False})}\n\n"
 
             # Save to cache and DB after streaming completes
             if final_report:
-                await cache_review(request.pr_url, final_report)
-                await save_review(final_report)
+                await persist(request.pr_url, final_report)
 
             yield "data: [DONE]\n\n"
 

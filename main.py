@@ -25,7 +25,7 @@ def main():
         "test_findings":     [],
         "style_findings":    [],
         "final_report":      {},
-        "retry_count":       0,
+        "failed_agents":     [],
         "error":             "",
     })
 

@@ -88,6 +88,7 @@ export default function Home() {
             if (data.status === "test_done")     addStatus(`✓ ${data.message}`, "done");
             if (data.status === "style_done")    addStatus(`✓ ${data.message}`, "done");
             if (data.status === "error")         addStatus(`✗ ${data.message}`, "error");
+            if (data.status === "agent_failed")  addStatus(`✗ ${data.message}`, "error");
             if (data.status === "complete" && data.report) {
               setReport(data.report);
               addStatus("Analysis complete", "done");

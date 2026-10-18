@@ -9,31 +9,34 @@ from agent.state import GraphState
 load_dotenv()
 
 # Load LLM once at module level — not inside each function.
-# GPT-4o-mini is fast, cheap, and more than capable for code review.
-# If you don't have OpenAI billing, swap to Groq:
-#   from langchain_groq import ChatGroq
-#   llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+# Model is env-configurable because Groq retires models (llama-3.3-70b-versatile was removed).
+# Groq free tier caps every model at 8k tokens/min, and 4 parallel agents share it:
+# low reasoning effort cuts ~1k hidden tokens per call, and the extra retries
+# make the SDK wait out 429s (it honours retry-after) instead of failing an agent.
+# shortcut: reasoning_effort only works on gpt-oss/qwen models, drop it if GROQ_MODEL changes family.
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
     temperature=0,
+    reasoning_effort="low",
+    max_retries=5,
     api_key=os.getenv("GROQ_API_KEY"),
 )
 
 
 # ── Shared helper ─────────────────────────────────────────────────────────────
-def call_agent(prompt: str, agent_name: str) -> list:
+def call_agent(prompt: str, agent_name: str, state_key: str) -> dict:
     """
-    Call the LLM with a prompt and parse the JSON response.
-    Returns a list of finding dicts.
+    Call the LLM with a prompt, parse the JSON findings, and return
+    the state update for this agent.
 
     Every agent uses this same pattern:
     1. Send the diff + instructions to the LLM
     2. LLM returns structured JSON findings
-    3. We parse and return the list
+    3. We parse them, tag each with the agent name, and return them
 
-    Using a shared helper means all 4 agents have identical
-    error handling — if any one fails, it returns an empty
-    list rather than crashing the whole graph.
+    On failure the agent is recorded in failed_agents instead of
+    returning an empty list — otherwise a broken agent is
+    indistinguishable from a clean PR.
     """
     try:
         response = llm.invoke(prompt)
@@ -52,15 +55,19 @@ def call_agent(prompt: str, agent_name: str) -> list:
         if isinstance(findings, dict):
             findings = [findings]
 
+        # Tag each finding with its source agent for the synthesizer
+        for f in findings:
+            f["agent"] = agent_name
+
         print(f"[{agent_name}] Found {len(findings)} issue(s)")
-        return findings
+        return {state_key: findings}
 
     except json.JSONDecodeError:
-        print(f"[{agent_name}] JSON parse failed — returning empty findings")
-        return []
+        print(f"[{agent_name}] JSON parse failed")
+        return {"failed_agents": [agent_name]}
     except Exception as e:
         print(f"[{agent_name}] Error: {e}")
-        return []
+        return {"failed_agents": [agent_name]}
 
 
 # ── Node 1: Ingest diff ───────────────────────────────────────────────────────
@@ -84,16 +91,7 @@ def ingest_diff(state: GraphState) -> dict:
     print(f"[ingest_diff] {metadata['files_changed']} files, "
           f"+{metadata['additions']} -{metadata['deletions']}")
 
-    return {
-        "raw_diff":          raw_diff,
-        "pr_metadata":       metadata,
-        "retry_count":       0,
-        "error":             "",
-        "security_findings": [],
-        "perf_findings":     [],
-        "test_findings":     [],
-        "style_findings":    [],
-    }
+    return {"raw_diff": raw_diff, "pr_metadata": metadata}
 
 
 # ── Node 2: Security agent ────────────────────────────────────────────────────
@@ -142,13 +140,7 @@ Return a JSON array of findings. Each finding must have exactly these fields:
 If no security issues are found, return an empty array: []
 Return ONLY the JSON array. No explanation, no markdown, no backticks."""
 
-    findings = call_agent(prompt, "security_agent")
-
-    # Tag each finding with its source agent for the synthesizer
-    for f in findings:
-        f["agent"] = "security"
-
-    return {"security_findings": findings}
+    return call_agent(prompt, "security", "security_findings")
 
 
 # ── Node 3: Performance agent ─────────────────────────────────────────────────
@@ -197,12 +189,7 @@ Return a JSON array of findings. Each finding must have exactly these fields:
 If no performance issues are found, return an empty array: []
 Return ONLY the JSON array. No explanation, no markdown, no backticks."""
 
-    findings = call_agent(prompt, "perf_agent")
-
-    for f in findings:
-        f["agent"] = "performance"
-
-    return {"perf_findings": findings}
+    return call_agent(prompt, "performance", "perf_findings")
 
 
 # ── Node 4: Test coverage agent ───────────────────────────────────────────────
@@ -248,12 +235,7 @@ Return a JSON array of findings. Each finding must have exactly these fields:
 If test coverage looks adequate, return an empty array: []
 Return ONLY the JSON array. No explanation, no markdown, no backticks."""
 
-    findings = call_agent(prompt, "test_agent")
-
-    for f in findings:
-        f["agent"] = "testing"
-
-    return {"test_findings": findings}
+    return call_agent(prompt, "testing", "test_findings")
 
 
 # ── Node 5: Style agent ───────────────────────────────────────────────────────
@@ -301,12 +283,7 @@ Return a JSON array of findings. Each finding must have exactly these fields:
 If style looks good, return an empty array: []
 Return ONLY the JSON array. No explanation, no markdown, no backticks."""
 
-    findings = call_agent(prompt, "style_agent")
-
-    for f in findings:
-        f["agent"] = "style"
-
-    return {"style_findings": findings}
+    return call_agent(prompt, "style", "style_findings")
 
 
 # ── Node 6: Synthesize ────────────────────────────────────────────────────────
@@ -322,6 +299,10 @@ def synthesize(state: GraphState) -> dict:
     appear first in the report, regardless of which agent found them.
     """
     print("\n[synthesize] Merging findings from all agents...")
+
+    failed = state.get("failed_agents", [])
+    if len(failed) == 4:
+        return {"error": "All review agents failed — check GROQ_API_KEY and GROQ_MODEL"}
 
     all_findings = (
         state.get("security_findings", []) +
@@ -357,10 +338,12 @@ def synthesize(state: GraphState) -> dict:
             "style":       len(state.get("style_findings",    [])),
         },
         "findings": sorted_findings,
+        "failed_agents": failed,
         "summary": (
             f"Found {len(sorted_findings)} issue(s): "
             f"{counts['critical']} critical, {counts['high']} high, "
             f"{counts['medium']} medium, {counts['low']} low."
+            + (f" Incomplete — failed agents: {', '.join(failed)}." if failed else "")
         ),
     }
 
