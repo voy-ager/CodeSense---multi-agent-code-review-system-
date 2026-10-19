@@ -21,8 +21,20 @@ const FAQS = [
     a: "Usually 5–30 seconds, depending on the size of the diff and model load. Reviewing the same PR again within an hour returns the cached report instantly.",
   },
   {
+    q: "Can a malicious PR trick the reviewer?",
+    a: "It can try. The diff is passed to the model as fenced, untrusted data, and rule-based checks flag text aimed at AI reviewers and invisible Unicode. Those rules don't use the model, so they can't be talked out of a finding.",
+  },
+  {
+    q: "What does it catch that a typical AI reviewer misses?",
+    a: "Dependencies that don't exist or were published days ago (slopsquatting), secrets hidden as lists of numbers, and bidirectional or zero-width characters that make code read differently than it runs.",
+  },
+  {
+    q: "Can I use it from my editor?",
+    a: "Yes. Run mcp_server.py and add it to Claude Desktop, Cursor, or VS Code as an MCP server; it exposes a review_pull_request tool.",
+  },
+  {
     q: "What happens with very large PRs?",
-    a: "The agents review the first 8,000 characters of the diff, and the report says so. Per-file chunking for larger PRs is on the roadmap.",
+    a: "The AI agents review the first 8,000 characters of the diff and the report says so. Rule-based checks always scan the whole diff.",
   },
   {
     q: "What if one of the agents fails?",

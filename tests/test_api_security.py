@@ -83,5 +83,25 @@ class HardeningTests(unittest.TestCase):
         self.assertIsNone(bad.headers.get("access-control-allow-origin"))
 
 
+class QaUrlRegressionTests(unittest.TestCase):
+    def test_l7_leading_zero_and_commit_links_canonicalise(self):
+        self.assertEqual(canonical_pr_url("https://github.com/o/r/pull/01"), "https://github.com/o/r/pull/1")
+        self.assertEqual(canonical_pr_url("https://github.com/o/r/pull/5/commits/abc1234def"), "https://github.com/o/r/pull/5")
+
+    def test_l3_and_m11_github_errors_are_clean(self):
+        import requests
+        from unittest.mock import MagicMock
+        from tools import github
+        with patch.object(github.requests, "get", side_effect=requests.ConnectionError("NameResolutionError api.github.com")):
+            with self.assertRaises(ValueError) as e:
+                github.fetch_pr_diff("https://github.com/o/r/pull/1")
+        self.assertNotIn("NameResolution", str(e.exception))
+        limited = MagicMock(status_code=403, ok=False, headers={"X-RateLimit-Remaining": "0"})
+        with patch.object(github.requests, "get", return_value=limited):
+            with self.assertRaises(ValueError) as e:
+                github.fetch_pr_diff("https://github.com/o/r/pull/1")
+        self.assertIn("rate limit", str(e.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -65,7 +65,7 @@ const STEPS = [
     number: "02",
     title: "Four agents run in parallel",
     description:
-      "Security, performance, testing, and style agents analyze the diff simultaneously. Total time is determined by the slowest single agent, not the sum.",
+      "Security, performance, testing, and style agents analyze the diff simultaneously, alongside rule-based checks for secrets, risky dependencies, and prompt injection. Total time is determined by the slowest single agent, not the sum.",
   },
   {
     number: "03",

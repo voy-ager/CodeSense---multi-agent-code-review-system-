@@ -26,7 +26,7 @@ export default function PipelineStatus({
         Agent pipeline
       </p>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2.5" role="status" aria-live="polite">
         <AnimatePresence>
           {statuses.map((s, i) => (
             <motion.div

@@ -50,6 +50,10 @@ class GraphState(TypedDict):
     style_findings: list
     # Written by style_agent. Same structure as above.
 
+    static_findings: list
+    # Written by static_scan (rule-based: secrets, hidden Unicode,
+    # prompt injection, hallucinated dependencies). Same structure, plus "source": "static".
+
     # ── Output ────────────────────────────────────────
     final_report: dict
     # Written by synthesize. The merged, ranked, deduplicated

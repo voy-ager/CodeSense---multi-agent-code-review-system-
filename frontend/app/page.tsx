@@ -15,7 +15,7 @@ import { FinalCta, Footer } from "@/components/SiteFooter";
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
 
 const EXAMPLE_PR = "https://github.com/psf/requests/pull/6746";
-const DONE_STATUSES = ["diff_fetched", "security_done", "perf_done", "test_done", "style_done"];
+const DONE_STATUSES = ["diff_fetched", "security_done", "perf_done", "test_done", "style_done", "static_done"];
 
 type Severity = "critical" | "high" | "medium" | "low";
 type Finding = {
@@ -35,6 +35,9 @@ type Report = {
   by_agent: Record<string, number>;
   findings: Finding[];
   summary: string;
+  diff_truncated?: boolean;
+  failed_agents?: string[];
+  stale?: boolean;
 };
 type Status = { message: string; type: "info" | "done" | "error" };
 
@@ -67,14 +70,18 @@ export default function Home() {
         body:    JSON.stringify({ pr_url: url.trim() }),
       });
       if (!res.ok) {
-        // FastAPI/SlowAPI errors carry a human-readable reason in "detail" or "error".
+        // FastAPI/SlowAPI errors carry a human-readable reason in "detail" (string or
+        // validation list) or "error".
         const body = await res.json().catch(() => ({}));
-        const detail = typeof body.detail === "string" ? body.detail : body.error;
+        const detail = typeof body.detail === "string" ? body.detail
+          : Array.isArray(body.detail) ? body.detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join("; ")
+          : body.error;
         throw new Error(detail || `Server error: ${res.status}`);
       }
       const reader  = res.body!.getReader();
       const decoder = new TextDecoder();
       let   buffer  = "";
+      let   settled = false;   // got a final "complete" or "error"
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -91,13 +98,16 @@ export default function Home() {
             // PipelineStatus draws the ✓/✗ icon, so messages go in unprefixed.
             if (DONE_STATUSES.includes(data.status)) addStatus(data.message, "done");
             if (data.status === "error" || data.status === "agent_failed") addStatus(data.message, "error");
+            if (data.status === "error") settled = true;
             if (data.status === "complete" && data.report) {
+              settled = true;
               setReport(data.report);
               addStatus("Analysis complete", "done");
             }
           } catch { /* skip malformed */ }
         }
       }
+      if (!settled) addStatus("Connection lost before the review finished — please try again", "error");
     } catch (err: unknown) {
       addStatus(err instanceof Error ? err.message : "Failed to reach backend", "error");
     } finally {

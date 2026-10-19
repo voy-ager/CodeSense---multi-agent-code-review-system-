@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt bandit pip-audit
+      - name: Unit, security and attack tests
+        run: python -m unittest discover tests -v
+        env:
+          GROQ_API_KEY: test-key-unused   # LLM calls are mocked in tests
+      - name: Static analysis (bandit)
+        run: bandit -q -r agent api cache database tools mcp_server.py main.py
+      - name: Dependency audit (pip-audit)
+        run: pip-audit -r requirements.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Browser tests (API mocked)
+        run: npm run test:e2e
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image and check it runs as non-root
+        run: |
+          docker build -t codesense-ci .
+          test "$(docker run --rm --entrypoint id codesense-ci -u)" = "1000"

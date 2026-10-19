@@ -9,6 +9,10 @@ const DECISIONS = [
     body: "LangGraph fans the diff out to four independent agents, so a review takes as long as the slowest agent, not the sum of all four.",
   },
   {
+    title: "Rules the AI can't be talked out of",
+    body: "Deterministic checks run beside the agents on the full diff: leaked secrets (even integer-encoded ones), hallucinated or days-old packages, hidden Unicode, and text aimed at AI reviewers.",
+  },
+  {
     title: "Failures are never silent",
     body: "If an agent errors, the report is marked incomplete and names it. A broken review is never shown as a clean PR, and incomplete reports aren't cached.",
   },
@@ -17,27 +21,27 @@ const DECISIONS = [
     body: "Every agent returns the same JSON shape — severity, file, line, issue, fix — so findings from all four merge into one list sorted by severity.",
   },
   {
-    title: "Cached and persisted",
-    body: "Redis caches each report for an hour, so repeat reviews return instantly. PostgreSQL keeps the review history behind an API key.",
+    title: "Cached per commit",
+    body: "Reports are cached by the PR's head commit, so repeat reviews are instant and a new push always gets a fresh review. PostgreSQL keeps history behind an API key.",
   },
   {
     title: "Hardened API",
     body: "Per-client rate limits, strict GitHub URL validation, request size caps, security headers, a CORS allowlist, and a non-root container.",
   },
   {
-    title: "Open source",
-    body: "Every agent prompt, the pipeline, and the infrastructure are on GitHub. Read exactly what each agent is told to look for.",
+    title: "Works in your editor",
+    body: "An MCP server exposes review_pull_request to Claude Desktop, Cursor, and VS Code. The same pipeline, without leaving your IDE.",
   },
 ];
 
 const STACK = [
   "LangGraph", "Groq · gpt-oss-120b", "FastAPI + SSE", "PostgreSQL",
-  "Redis", "Docker", "Next.js 16", "Framer Motion",
+  "Redis", "MCP", "Docker", "Next.js 16",
 ];
 
 const LIMITS = [
   "Public GitHub pull requests only",
-  "Diffs beyond 8,000 characters are truncated",
+  "AI agents read the first 8,000 characters of a diff; rule-based checks read all of it",
   "Findings are AI-generated — treat them as a first pass, not a verdict",
 ];
 

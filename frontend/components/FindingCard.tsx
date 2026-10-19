@@ -12,6 +12,7 @@ type Finding = {
   fix: string;
   category: string;
   agent: string;
+  source?: string;
 };
 
 export const SEVERITY_STYLES: Record<Severity, string> = {
@@ -56,13 +57,21 @@ export default function FindingCard({
             <AgentIcon name={finding.agent} className="w-3 h-3 inline -mt-0.5 mr-1" />{finding.agent}
           </span>
 
+          {/* Rule-based findings can't be argued away by prompt injection — say so */}
+          {finding.source === "static" && (
+            <span className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full"
+                  title="Found by a deterministic rule, not the AI model">
+              rule-based
+            </span>
+          )}
+
           {/* Category label */}
           <span className="text-xs text-slate-500">{finding.category}</span>
         </div>
 
         {/* File + line — monospace, right-aligned */}
         <span className="text-xs font-mono text-slate-500 bg-slate-800/60
-                         px-2 py-1 rounded shrink-0">
+                         px-2 py-1 rounded min-w-0 break-all">
           {finding.file}:{finding.line}
         </span>
       </div>

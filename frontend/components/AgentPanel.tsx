@@ -11,6 +11,9 @@ type Report = {
   by_severity: Record<Severity, number>;
   by_agent: Record<string, number>;
   summary: string;
+  diff_truncated?: boolean;
+  failed_agents?: string[];
+  stale?: boolean;
 };
 
 const SEVERITY_STYLES: Record<Severity, string> = {
@@ -49,6 +52,26 @@ export default function AgentPanel({
         </span>
       </div>
 
+      {!!report.failed_agents?.length && (
+        <p role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-4">
+          Incomplete review: the {report.failed_agents.join(", ")} check{report.failed_agents.length > 1 ? "s" : ""} failed.
+          A missing finding does not mean the code is clean — try again in a minute.
+        </p>
+      )}
+
+      {report.stale && (
+        <p role="note" className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
+          GitHub couldn&apos;t be reached, so this is the most recent saved review. It may predate the latest commits.
+        </p>
+      )}
+
+      {report.diff_truncated && (
+        <p role="note" className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
+          Large PR: the AI agents reviewed the first part of the diff. Rule-based checks
+          (secrets, dependencies, hidden Unicode, prompt injection) covered all of it.
+        </p>
+      )}
+
       {/* Severity filters */}
       <div className="flex gap-2 flex-wrap mb-4">
         {(["critical", "high", "medium", "low"] as Severity[]).map((sev) => (
@@ -56,6 +79,7 @@ export default function AgentPanel({
             key={sev}
             whileTap={{ scale: 0.95 }}
             onClick={() => setFilter(filter === sev ? "all" : sev)}
+            aria-pressed={filter === sev}
             className={`text-xs px-3 py-1.5 rounded-full border font-medium
                         transition-all duration-200 ${SEVERITY_STYLES[sev]}
                         ${filter === sev ? "ring-2 ring-white/20 ring-offset-1 ring-offset-slate-900" : ""}`}
@@ -72,6 +96,7 @@ export default function AgentPanel({
             key={agent}
             whileTap={{ scale: 0.95 }}
             onClick={() => setFilter(filter === agent ? "all" : agent)}
+            aria-pressed={filter === agent}
             className={`text-xs text-slate-300 flex items-center gap-1.5 px-3 py-1.5
                         bg-slate-800 rounded-lg border border-slate-700
                         hover:border-slate-500 hover:bg-slate-700/60

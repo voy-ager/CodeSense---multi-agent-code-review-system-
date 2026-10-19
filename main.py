@@ -1,6 +1,6 @@
 # main.py
 
-from agent.graph import build_graph
+from agent.graph import build_graph, initial_state
 import json
 
 def main():
@@ -16,18 +16,7 @@ def main():
     print(f"Analyzing PR: {pr_url}\n")
 
     # invoke() runs the full graph synchronously and returns final state
-    result = app.invoke({
-        "pr_url":            pr_url,
-        "raw_diff":          "",
-        "pr_metadata":       {},
-        "security_findings": [],
-        "perf_findings":     [],
-        "test_findings":     [],
-        "style_findings":    [],
-        "final_report":      {},
-        "failed_agents":     [],
-        "error":             "",
-    })
+    result = app.invoke(initial_state(pr_url))
 
     # Print the final report
     if result.get("error"):
