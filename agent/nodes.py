@@ -18,19 +18,28 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# Load LLM once at module level — not inside each function.
+# The LLM client is created on first use, once, and shared by all agents. Lazy so that
+# importing the pipeline (API server, MCP server, tests) never crashes when GROQ_API_KEY
+# is missing — the agents report a clear failure at review time instead.
 # Model is env-configurable because Groq retires models (llama-3.3-70b-versatile was removed).
 # Groq free tier caps every model at 8k tokens/min, and 4 parallel agents share it:
 # low reasoning effort cuts ~1k hidden tokens per call, and the extra retries
 # make the SDK wait out 429s (it honours retry-after) instead of failing an agent.
 # shortcut: reasoning_effort only works on gpt-oss/qwen models, drop it if GROQ_MODEL changes family.
-llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
-    temperature=0,
-    reasoning_effort="low",
-    max_retries=5,
-    api_key=os.getenv("GROQ_API_KEY"),
-)
+llm = None
+
+
+def get_llm():
+    global llm
+    if llm is None:
+        llm = ChatGroq(
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+            temperature=0,
+            reasoning_effort="low",
+            max_retries=5,
+            api_key=os.getenv("GROQ_API_KEY"),
+        )
+    return llm
 
 
 # The LLM sees at most this much diff (~2k tokens) to fit the free-tier token budget.
@@ -122,7 +131,7 @@ def call_agent(prompt: str, nonce: str, agent_name: str, state_key: str) -> dict
     indistinguishable from a clean PR.
     """
     try:
-        response = llm.invoke([SystemMessage(GUARD.format(nonce=nonce)), HumanMessage(prompt)])
+        response = get_llm().invoke([SystemMessage(GUARD.format(nonce=nonce)), HumanMessage(prompt)])
         raw = response.content.strip()
 
         # Strip markdown code fences if LLM wraps output in ```json ... ```

@@ -49,5 +49,19 @@ class StdioTests(unittest.TestCase):
         self.assertEqual(asyncio.run(asyncio.wait_for(run(), 60)), ["review_pull_request"])
 
 
+class MissingKeyTests(unittest.TestCase):
+    def test_server_starts_without_groq_key(self):
+        """Regression (first CI run): the MCP SDK starts servers with a minimal environment,
+        so a missing GROQ_API_KEY must not crash the server at import time."""
+        env = {k: v for k, v in os.environ.items() if k != "GROQ_API_KEY"}
+        code = ("import os, sys; os.environ.pop('GROQ_API_KEY', None); "
+                "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "   # ignore any local .env
+                "import mcp_server; print('imported')")
+        import subprocess
+        out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr[-500:])
+        self.assertIn("imported", out.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
